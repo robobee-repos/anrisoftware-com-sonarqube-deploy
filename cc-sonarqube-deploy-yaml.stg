@@ -371,13 +371,13 @@ metadata:
   name: sonarqube
   namespace: anrisoftware-com-sonarqube
   labels:
-    app: nexus
+    app: sonarqube
     tier: frontend
     group: sonarqube
   annotations:
     <ingressDefaultAnnotations(vars.nginx)>
 spec:
-  <ingressDefaultSpec(vars.nexus, "sonarqube-ingress")>
+  <ingressDefaultSpec(vars.sonarqube, "sonarqube-ingress")>
 
 ---
 
