@@ -10,10 +10,10 @@
  * vars.sonarqube.puma.maxThreads
  * vars.sonarqube.puma.workers
  * vars.sonarqube.puma.timeout
- * vars.sonarqube.postgres.user
- * vars.sonarqube.postgres.password
- * vars.sonarqube.postgres.database
- * vars.sonarqube.postgres.schema
+ * vars.sonarqube.db.user
+ * vars.sonarqube.db.password
+ * vars.sonarqube.db.database
+ * vars.sonarqube.db.jdbc
  * vars.postgres.password
  * vars.pgbouncer.image.name
  * vars.pgbouncer.image.version
@@ -71,10 +71,10 @@ metadata:
     group: sonarqube
 type: Opaque
 data:
-  user: <vars.sonarqube.postgres.user;format="base64">
-  password: <vars.sonarqube.postgres.password;format="base64">
-  database: <vars.sonarqube.postgres.database;format="base64">
-  jdbc: <vars.sonarqube.postgres.jdbc;format="base64">
+  user: <vars.sonarqube.db.user;format="base64">
+  password: <vars.sonarqube.db.password;format="base64">
+  database: <vars.sonarqube.db.database;format="base64">
+  jdbc: <vars.sonarqube.db.jdbc;format="base64">
   admin_password: <vars.postgres.password;format="base64">
 
 ---
@@ -91,7 +91,7 @@ metadata:
 data:
   pgbouncer.ini: |
     [databases]
-    <vars.sonarqube.postgres.database> = host=db port=5432 dbname=<vars.sonarqube.postgres.database>
+    <vars.sonarqube.db.database> = host=db port=5432 dbname=<vars.sonarqube.db.database>
     [pgbouncer]
     listen_port = 5432
     listen_addr = 0.0.0.0
@@ -99,9 +99,9 @@ data:
     auth_file = /pgconf/bouncerconfig/users.txt
     logfile = /tmp/pgbouncer.log
     pidfile = /tmp/pgbouncer.pid
-    admin_users = <vars.sonarqube.postgres.user>
+    admin_users = <vars.sonarqube.db.user>
   users.txt: |
-    "<vars.sonarqube.postgres.user>" "<vars.sonarqube.postgres.password>"
+    "<vars.sonarqube.db.user>" "<vars.sonarqube.db.password>"
 
 ---
 
@@ -151,8 +151,8 @@ spec:
       - image: <vars.sonarqube.image.name>:<vars.sonarqube.image.version>
         name: sonarqube
         env:
-        - name: REDMINE_DB_POSTGRES
-          value: "db"
+        - name: SONARQUBE_WEB_JVM_OPTS
+          value: "-XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
         - name: SONARQUBE_JDBC_USERNAME
           valueFrom:
             secretKeyRef:
