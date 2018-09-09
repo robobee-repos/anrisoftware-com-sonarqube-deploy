@@ -2,6 +2,7 @@
  * Mandatory:
  *
  * vars.volumes.data.storage
+ * vars.volumes.data.class
  *
  */
 
@@ -16,6 +17,8 @@ metadata:
   namespace: anrisoftware-com-sonarqube
   labels:
     group: sonarqube
+  annotations:
+    volume.beta.kubernetes.io/storage-class: <vars.volumes.data.class>
 spec:
   accessModes:
   - ReadWriteMany
