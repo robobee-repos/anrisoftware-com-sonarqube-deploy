@@ -147,7 +147,7 @@ spec:
       volumes:
       - name: pgdata
         persistentVolumeClaim:
-          claimName: anrisoftware-com-data
+          claimName: "sonarqube-data"
       <affinitiesGroup(parent, vars, vars.postgres.affinity)>
       <tolerationMasterGroup(parent, vars, vars.postgres.allowOnMaster)>
       <tolerationsGroup(parent, vars, vars.postgres.tolerations, vars.postgres.allowOnMaster)>
