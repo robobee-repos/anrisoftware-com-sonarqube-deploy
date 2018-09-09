@@ -1,0 +1,398 @@
+/*
+ * Mandatory:
+ *
+ * vars.sonarqube.image.name
+ * vars.sonarqube.image.version
+ * vars.sonarqube.revision
+ * vars.sonarqube.initialDelaySeconds
+ * vars.sonarqube.nginx.hosts[]
+ * vars.sonarqube.puma.minThreads
+ * vars.sonarqube.puma.maxThreads
+ * vars.sonarqube.puma.workers
+ * vars.sonarqube.puma.timeout
+ * vars.sonarqube.postgres.user
+ * vars.sonarqube.postgres.password
+ * vars.sonarqube.postgres.database
+ * vars.sonarqube.postgres.schema
+ * vars.postgres.password
+ * vars.pgbouncer.image.name
+ * vars.pgbouncer.image.version
+ * vars.rsync.image.name
+ * vars.rsync.image.version
+ * vars.rsync.ssh.revision
+ * 
+ * Optional:
+ * 
+ * vars.sonarqube.limits.cpu
+ * vars.sonarqube.limits.memory
+ * vars.sonarqube.requests.cpu
+ * vars.sonarqube.requests.memory
+ * vars.sonarqube.affinity.key
+ * vars.sonarqube.affinity.name
+ * vars.sonarqube.affinity.required
+ * vars.sonarqube.allowOnMaster
+ * vars.sonarqube.tolerations[].effect
+ * vars.sonarqube.tolerations[].key
+ * vars.sonarqube.tolerations[].value
+ * vars.pgbouncer.limits.cpu
+ * vars.pgbouncer.limits.memory
+ * vars.pgbouncer.requests.cpu
+ * vars.pgbouncer.requests.memory
+ * vars.rsync.limits.cpu
+ * vars.rsync.limits.memory
+ * vars.rsync.requests.cpu
+ * vars.rsync.requests.memory
+ */
+
+import "robobeerun-templates/_affinities.stg"
+import "robobeerun-templates/_cert_config.stg"
+import "robobeerun-templates/_ingress_config.stg"
+import "robobeerun-templates/_nginx_config.stg"
+import "robobeerun-templates/_nginx_probe.stg"
+import "robobeerun-templates/_postgres_probe.stg"
+import "robobeerun-templates/_tolerations.stg"
+import "robobeerun-templates/_resources.stg"
+
+/*
+ *
+ */
+cc-sonarqube-deploy-yaml(parent, vars) ::= <<
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sonarqube-db-<vars.sonarqube.revision>
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: sonarqube
+    tier: backend
+    group: sonarqube
+type: Opaque
+data:
+  user: <vars.sonarqube.postgres.user;format="base64">
+  password: <vars.sonarqube.postgres.password;format="base64">
+  database: <vars.sonarqube.postgres.database;format="base64">
+  jdbc: <vars.sonarqube.postgres.jdbc;format="base64">
+  admin_password: <vars.postgres.password;format="base64">
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-<vars.sonarqube.revision>
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: pgbouncer
+    tier: backend
+    group: sonarqube
+data:
+  pgbouncer.ini: |
+    [databases]
+    <vars.sonarqube.postgres.database> = host=db port=5432 dbname=<vars.sonarqube.postgres.database>
+    [pgbouncer]
+    listen_port = 5432
+    listen_addr = 0.0.0.0
+    auth_type = md5
+    auth_file = /pgconf/bouncerconfig/users.txt
+    logfile = /tmp/pgbouncer.log
+    pidfile = /tmp/pgbouncer.pid
+    admin_users = <vars.sonarqube.postgres.user>
+  users.txt: |
+    "<vars.sonarqube.postgres.user>" "<vars.sonarqube.postgres.password>"
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarqube
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: sonarqube
+    tier: frontend
+    group: sonarqube
+spec:
+  ports:
+  - name: "http"
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: sonarqube
+
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: sonarqube
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: sonarqube
+    tier: frontend
+    group: sonarqube
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sonarqube
+      tier: frontend
+      group: sonarqube
+  template:
+    metadata:
+      labels:
+        app: sonarqube
+        tier: frontend
+        group: sonarqube
+    spec:
+      containers:
+      - image: <vars.sonarqube.image.name>:<vars.sonarqube.image.version>
+        name: sonarqube
+        env:
+        - name: REDMINE_DB_POSTGRES
+          value: "db"
+        - name: SONARQUBE_JDBC_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: user
+        - name: SONARQUBE_JDBC_URL
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: jdbc
+        - name: SONARQUBE_JDBC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: password
+        ports:
+        - containerPort: 9000
+          name: "http"
+        <resourcesGroup(parent, vars, vars.sonarqube)>
+        volumeMounts:
+        - mountPath: "/opt/sonarqube/data"
+          name: "data"
+          subPath: "sonarqube_data"
+        livenessProbe:
+          tcpSocket:
+            port: 9000
+          initialDelaySeconds: <vars.sonarqube.initialDelaySeconds>
+          periodSeconds: 60
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9000
+          initialDelaySeconds: 60
+          periodSeconds: 60
+          timeoutSeconds: 10
+      - image: <vars.pgbouncer.image.name>:<vars.pgbouncer.image.version>
+        name: pgbouncer
+        ports:
+        - containerPort: 5432
+          name: "postgres"
+        env:
+        - name: POSTGRESQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: user
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: password
+        - name: POSTGRESQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: database
+        livenessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          timeoutSeconds: 3
+          initialDelaySeconds: 5
+          exec:
+            command:
+            - "/bin/sh"
+            - "-i"
+            - "-c"
+            - PGPASSWORD=${POSTGRESQL_PASSWORD}
+            - psql -h 127.0.0.1 -U $POSTGRESQL_USER -q -d $POSTGRESQL_DATABASE -c 'SELECT 1'
+        <resourcesGroup(parent, vars, vars.pgbouncer)>
+        volumeMounts:
+        - mountPath: "/pgconf/bouncerconfig"
+          name: "pgbouncer-config"
+      restartPolicy: Always
+      volumes:
+      - name: "data"
+        persistentVolumeClaim:
+          claimName: "sonarqube-data"
+      - name: "pgbouncer-config"
+        configMap:
+          name: "pgbouncer-<vars.sonarqube.revision>"
+      <affinitiesGroup(parent, vars, vars.sonarqube.affinity)>
+      <tolerationMasterGroup(parent, vars, vars.sonarqube.allowOnMaster)>
+      <tolerationsGroup(parent, vars, vars.sonarqube.tolerations, vars.sonarqube.allowOnMaster)>
+
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sonarqube-db-setup
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: sonarqube
+    tier: frontend
+    group: sonarqube
+spec:
+  template:
+    metadata:
+      name: sonarqube-db-setup
+    spec:
+      containers:
+      - image: <vars.postgres.image.name>:<vars.postgres.image.version>
+        name: sonarqube-db-setup
+        env:
+        - name: POSTGRESQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: user
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: password
+        - name: POSTGRESQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: database
+        - name: POSTGRESQL_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-db-<vars.sonarqube.revision>
+              key: admin_password
+        - name: PGHOST
+          value: "postgres"
+        - name: PGPORT
+          value: "5432"
+        - name: PGUSER
+          value: "postgres"
+        command:
+        - /bin/sh
+        - -i
+        - -c
+        - >
+          while ! PGPASSWORD=${POSTGRESQL_ADMIN_PASSWORD} psql "postgresql://postgres@postgres" -c "SELECT 1;"; do sleep 3; done;
+          PGPASSWORD=${POSTGRESQL_ADMIN_PASSWORD} createuser $POSTGRESQL_USER ;
+          PGPASSWORD=${POSTGRESQL_ADMIN_PASSWORD} createdb --owner=$POSTGRESQL_USER $POSTGRESQL_DATABASE ;
+          PGPASSWORD=${POSTGRESQL_ADMIN_PASSWORD} psql -c "ALTER USER \"${POSTGRESQL_USER}\" WITH ENCRYPTED PASSWORD '${POSTGRESQL_PASSWORD}';";
+          PGPASSWORD=${POSTGRESQL_PASSWORD} psql "postgresql://${POSTGRESQL_USER}@postgres" -c "CREATE SCHEMA anrisprojects;"
+      restartPolicy: Never
+  backoffLimit: 4
+
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: rsync-sonarqube
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: rsync-sonarqube
+    tier: backup
+    group: sonarqube
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: rsync-sonarqube
+      tier: backup
+      group: sonarqube
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: rsync-sonarqube
+        tier: backup
+        group: sonarqube
+    spec:
+      containers:
+      - image: <vars.rsync.image.name>:<vars.rsync.image.version>
+        name: rsync-sonarqube
+        env:
+        - name: RSYNC_AUTHORIZED_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rsync-ssh-<vars.rsync.ssh.revision>
+              key: auth-key
+        - name: USER
+          value: "root"
+        ports:
+        - containerPort: 2222
+          name: ssh
+        readinessProbe:
+          exec:
+            command:
+            - /readiness.sh
+            - /data/Rakefile
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        <resourcesGroup(parent, vars, vars.rsync)>
+        volumeMounts:
+        - mountPath: "/data"
+          name: "data"
+          subPath: "sonarqube_data"
+      restartPolicy: Always
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: "sonarqube-data"
+      <affinitiesGroup(parent, vars, vars.sonarqube.affinity)>
+      <tolerationMasterGroup(parent, vars, vars.sonarqube.allowOnMaster)>
+      <tolerationsGroup(parent, vars, vars.sonarqube.tolerations, vars.sonarqube.allowOnMaster)>
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: sonarqube
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: nexus
+    tier: frontend
+    group: sonarqube
+  annotations:
+    <ingressDefaultAnnotations(vars.nginx)>
+spec:
+  <ingressDefaultSpec(vars.nexus, "sonarqube-ingress")>
+
+---
+
+<ingressService(vars.nexus, "sonarqube-ingress", "sonarqube", "anrisoftware-com-sonarqube")>
+
+---
+
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Certificate
+metadata:
+  name: sonarqube
+  namespace: anrisoftware-com-sonarqube
+spec:
+  <certDefaultSpecProd(vars.nexus, "sonarqube-certs")>
+
+---
+
+>>

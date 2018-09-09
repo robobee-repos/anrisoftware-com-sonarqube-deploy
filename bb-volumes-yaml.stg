@@ -1,0 +1,26 @@
+/*
+ * Mandatory:
+ *
+ * vars.volumes.data.storage
+ *
+ */
+
+/*
+ * 
+ */
+bb-volumes-yaml(parent, vars) ::= <<
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "sonarqube-data"
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    group: sonarqube
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: <vars.volumes.data.storage>
+
+>>
