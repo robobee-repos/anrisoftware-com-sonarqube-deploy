@@ -5,7 +5,8 @@
  * vars.sonarqube.image.version
  * vars.sonarqube.revision
  * vars.sonarqube.initialDelaySeconds
- * vars.sonarqube.nginx.hosts[]
+ * vars.sonarqube.hosts[]
+ * vars.sonarqube.port
  * vars.sonarqube.puma.minThreads
  * vars.sonarqube.puma.maxThreads
  * vars.sonarqube.puma.workers
@@ -17,6 +18,12 @@
  * vars.postgres.password
  * vars.pgbouncer.image.name
  * vars.pgbouncer.image.version
+ * vars.nginx.image.name
+ * vars.nginx.image.version
+ * vars.nginx.workerProcesses
+ * vars.nginx.workerConnections
+ * vars.nginx.clientMaxBodySize
+ * vars.nginx.readTimeout
  * vars.rsync.image.name
  * vars.rsync.image.version
  * vars.rsync.ssh.revision
@@ -38,6 +45,10 @@
  * vars.pgbouncer.limits.memory
  * vars.pgbouncer.requests.cpu
  * vars.pgbouncer.requests.memory
+ * vars.nginx.limits.cpu
+ * vars.nginx.limits.memory
+ * vars.nginx.requests.cpu
+ * vars.nginx.requests.memory
  * vars.rsync.limits.cpu
  * vars.rsync.limits.memory
  * vars.rsync.requests.cpu
@@ -64,7 +75,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: sonarqube-db-<vars.sonarqube.revision>
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
   labels:
     app: sonarqube
     tier: backend
@@ -83,7 +94,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: pgbouncer-<vars.sonarqube.revision>
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
   labels:
     app: pgbouncer
     tier: backend
@@ -107,10 +118,42 @@ data:
 ---
 
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-<vars.redmine.revision>
+  namespace: anrisoftware-com-sonarqube
+  labels:
+    app: nginx
+    tier: frontend
+    group: sonarqube
+data:
+  nginx.conf: |
+    <nginxDefaults(parent, vars, vars.nginx)>
+    http {
+        <nginxHttpDefaults(parent, vars, vars.nginx)>
+        <nginxVirtualHosts(parent, vars, vars.sonarqube.hosts)>
+        server {
+            listen 8080;
+            listen [::]:8080;
+            server_name <first(vars.sonarqube.hosts)>;
+            root /var/www/html;
+            index index.php;
+            <nginxLocationFavicon(parent, vars)>
+            <nginxLocationRobots(parent, vars)>
+            <nginxLocationHidden(parent, vars)>
+            location / {
+                proxy_pass http://localhost:9000;
+            }
+        }
+    }
+
+---
+
+apiVersion: v1
 kind: Service
 metadata:
   name: sonarqube
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
   labels:
     app: sonarqube
     tier: frontend
@@ -129,7 +172,7 @@ apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: sonarqube
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
   labels:
     app: sonarqube
     tier: frontend
@@ -231,6 +274,19 @@ spec:
         volumeMounts:
         - mountPath: "/pgconf/bouncerconfig"
           name: "pgbouncer-config"
+      - image: <vars.nginx.image.name>:<vars.nginx.image.version>
+        name: nginx
+        ports:
+        - containerPort: 8080
+          name: "http"
+        <nginxReadinessProbe(parent, vars, vars.sonarqube)>
+        <resourcesGroup(parent, vars, vars.nginx)>
+        volumeMounts:
+        - mountPath: "/var/www/html"
+          name: "data"
+          subPath: "sonarqube_html"
+        - mountPath: "/nginx-in"
+          name: "nginx-config"
       restartPolicy: Always
       volumes:
       - name: "data"
@@ -249,7 +305,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: sonarqube-db-setup
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
   labels:
     app: sonarqube
     tier: frontend
@@ -308,7 +364,7 @@ apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: rsync-sonarqube
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
   labels:
     app: rsync-sonarqube
     tier: backup
@@ -370,7 +426,7 @@ apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: sonarqube
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
   labels:
     app: sonarqube
     tier: frontend
@@ -390,7 +446,7 @@ apiVersion: certmanager.k8s.io/v1alpha1
 kind: Certificate
 metadata:
   name: sonarqube
-  namespace: anrisoftware-com-sonarqube
+  namespace: anrisoftware-com-sonarqube-sonarqube
 spec:
   <certDefaultSpecProd(vars.sonarqube, "sonarqube-certs")>
 
