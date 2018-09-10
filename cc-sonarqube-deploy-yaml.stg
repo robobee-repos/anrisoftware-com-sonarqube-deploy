@@ -451,7 +451,7 @@ metadata:
   name: sonarqube
   namespace: anrisoftware-com-sonarqube
 spec:
-  <certDefaultSpecProd(vars.sonarqube, "sonarqube-certs")>
+  <certDefaultSpecProd(vars.sonarqube, "sonarqube-ingress")>
 
 ---
 
