@@ -120,7 +120,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nginx-<vars.redmine.revision>
+  name: nginx-<vars.nginx.revision>
   namespace: anrisoftware-com-sonarqube
   labels:
     app: nginx
@@ -295,6 +295,9 @@ spec:
       - name: "pgbouncer-config"
         configMap:
           name: "pgbouncer-<vars.sonarqube.revision>"
+      - name: "nginx-config"
+        configMap:
+          name: "nginx-<vars.nginx.revision>"
       <affinitiesGroup(parent, vars, vars.sonarqube.affinity)>
       <tolerationMasterGroup(parent, vars, vars.sonarqube.allowOnMaster)>
       <tolerationsGroup(parent, vars, vars.sonarqube.tolerations, vars.sonarqube.allowOnMaster)>
