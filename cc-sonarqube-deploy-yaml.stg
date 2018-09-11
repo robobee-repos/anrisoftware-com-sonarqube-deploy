@@ -185,6 +185,8 @@ spec:
       app: sonarqube
       tier: frontend
       group: sonarqube
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
