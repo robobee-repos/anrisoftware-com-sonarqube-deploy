@@ -41,6 +41,7 @@
  * vars.sonarqube.tolerations[].effect
  * vars.sonarqube.tolerations[].key
  * vars.sonarqube.tolerations[].value
+ * vars.sonarqube.java.opts[]
  * vars.pgbouncer.limits.cpu
  * vars.pgbouncer.limits.memory
  * vars.pgbouncer.requests.cpu
@@ -196,7 +197,7 @@ spec:
         name: sonarqube
         env:
         - name: SONARQUBE_WEB_JVM_OPTS
-          value: "-XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
+          value: "<vars.sonarqube.java.opts;seperator=" ">"
         - name: SONARQUBE_JDBC_USERNAME
           valueFrom:
             secretKeyRef:
